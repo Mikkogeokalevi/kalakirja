@@ -2,12 +2,11 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// --- KORJAUS ALKAA: Tuodaan kuvat ja Leaflet erikseen ---
+// --- KUVAKORJAUS (PIDETÄÄN TÄMÄ MUKANA) ---
 import L from 'leaflet'
 import icon from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
-// Asetetaan ikonit manuaalisesti, jotta ne eivät hajoa netissä
 let DefaultIcon = L.icon({
     iconUrl: icon,
     shadowUrl: iconShadow,
@@ -17,7 +16,7 @@ let DefaultIcon = L.icon({
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
-// --- KORJAUS PÄÄTTYY ---
+// ------------------------------------------
 
 import { db } from './firebase'
 import { collection, addDoc, getDocs } from 'firebase/firestore' 
@@ -35,6 +34,9 @@ function SiirraKartta({ koordinaatit }) {
 function Kartta() {
   const [sijainti, setSijainti] = useState(null)
   const [paikat, setPaikat] = useState([])
+  
+  // UUSI: Tähän tallentuu se nimi, jota käyttäjä kirjoittaa
+  const [uusiNimi, setUusiNimi] = useState("")
 
   useEffect(() => {
     if (navigator.geolocation) {
@@ -52,36 +54,47 @@ function Kartta() {
     }
   }, [])
 
+  // Hakee paikat alussa
   useEffect(() => {
     const haePaikat = async () => {
       const querySnapshot = await getDocs(collection(db, "kalapaikat"))
       const haetutPaikat = []
-      
       querySnapshot.forEach((doc) => {
-        haetutPaikat.push({
-          id: doc.id,
-          ...doc.data()
-        })
+        haetutPaikat.push({ id: doc.id, ...doc.data() })
       })
-      
       setPaikat(haetutPaikat)
     }
-
     haePaikat()
   }, []) 
 
   const tallennaPaikka = async () => {
     if (!sijainti) return
 
+    // Jos nimi on tyhjä, käytetään oletusta
+    const tallennettavaNimi = uusiNimi.trim() !== "" ? uusiNimi : "Nimetön paikka"
+
     try {
-      await addDoc(collection(db, "kalapaikat"), {
+      // 1. Lähetetään Firebaseen
+      const docRef = await addDoc(collection(db, "kalapaikat"), {
         lat: sijainti[0],
         lon: sijainti[1],
-        nimi: "Uusi kalapaikka", 
+        nimi: tallennettavaNimi, 
         pvm: new Date().toISOString() 
       });
       
-      alert("Paikka tallennettu! Päivitä sivu nähdäksesi sen.")
+      // 2. Lisätään paikka heti myös ruudulle näkyviin (ei tarvitse F5)
+      setPaikat([...paikat, {
+        id: docRef.id,
+        lat: sijainti[0],
+        lon: sijainti[1],
+        nimi: tallennettavaNimi,
+        pvm: new Date().toISOString()
+      }])
+
+      // 3. Tyhjennetään tekstikenttä ja kiitetään
+      setUusiNimi("") 
+      alert("Paikka tallennettu! 🐟")
+
     } catch (virhe) {
       console.error("Virhe tallennuksessa:", virhe)
       alert("Tallennus epäonnistui.")
@@ -109,14 +122,33 @@ function Kartta() {
           <Marker key={paikka.id} position={[paikka.lat, paikka.lon]}>
             <Popup>
               <b>{paikka.nimi}</b><br />
-              Tallennettu: {new Date(paikka.pvm).toLocaleDateString()}
+              <small>{new Date(paikka.pvm).toLocaleDateString()}</small>
             </Popup>
           </Marker>
         ))}
 
       </MapContainer>
 
-      <div style={{ marginTop: "10px", textAlign: "center" }}>
+      {/* UUSI: Ohjauspaneeli kartan alla */}
+      <div style={{ marginTop: "15px", textAlign: "center", padding: "10px", backgroundColor: "#f0f0f0", borderRadius: "8px" }}>
+        
+        <h3>Lisää uusi havainto</h3>
+        
+        <input 
+          type="text" 
+          placeholder="Paikan nimi (esim. Iso hauki)" 
+          value={uusiNimi}
+          onChange={(e) => setUusiNimi(e.target.value)}
+          style={{ 
+            padding: "10px", 
+            width: "70%", 
+            marginBottom: "10px", 
+            borderRadius: "5px", 
+            border: "1px solid #ccc" 
+          }}
+        />
+        <br />
+        
         <button 
           onClick={tallennaPaikka}
           style={{
@@ -126,10 +158,11 @@ function Kartta() {
             color: "white",
             border: "none",
             borderRadius: "5px",
-            cursor: "pointer"
+            cursor: "pointer",
+            width: "80%"
           }}
         >
-          📍 Tallenna nykyinen sijainti
+          📍 Tallenna sijainti
         </button>
       </div>
     </div>
