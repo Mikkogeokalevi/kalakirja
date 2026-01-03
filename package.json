@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "predeploy": "npm run build",
-    "deploy": "gh-pages -d dist"
+    "deploy": "gh-pages -d dist",
+    "julkaise": "git add . && git commit -m \"Päivitys\" && git push && npm run deploy"
   },
   "dependencies": {
     "firebase": "^11.1.0",
