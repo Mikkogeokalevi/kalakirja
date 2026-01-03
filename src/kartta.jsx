@@ -2,28 +2,36 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// --- YKSINKERTAISTETTU KUVAKORJAUS ---
+// --- VARMA KUVAKORJAUS (Haetaan ikonit suoraan netistä, ei sekoilua) ---
 import L from 'leaflet'
-// Määritellään ikonit suoraan ilman monimutkaista prototype-säätöä
-import iconMarker from 'leaflet/dist/images/marker-icon.png'
-import iconRetina from 'leaflet/dist/images/marker-icon-2x.png'
-import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
-const defaultIcon = L.icon({
-    iconRetinaUrl: iconRetina,
-    iconUrl: iconMarker,
-    shadowUrl: iconShadow,
+// Määritellään ikoni käyttämään suoria URL-osoitteita Leafletin palvelimelta
+// Tämä estää sen, että Vite pakkaa kuvat rikki.
+const DefaultIcon = L.icon({
+    iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
+    iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
+    shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
     iconSize: [25, 41],
     iconAnchor: [12, 41],
     popupAnchor: [1, -34],
     shadowSize: [41, 41]
 });
-// -------------------------------------
+L.Marker.prototype.options.icon = DefaultIcon;
+// -----------------------------------------------------------------------
 
 import { db } from './firebase'
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore' 
 
-// (Poistettu SiirraKartta-komponentti väliaikaisesti vianetsinnän ajaksi)
+// Palautetaan SiirraKartta, se on turvallinen kunhan ikonit on korjattu
+function SiirraKartta({ koordinaatit }) {
+  const map = useMap()
+  useEffect(() => {
+    if (koordinaatit) {
+      map.flyTo(koordinaatit, 14, { duration: 2 })
+    }
+  }, [koordinaatit, map])
+  return null
+}
 
 function Kartta() {
   const [sijainti, setSijainti] = useState(null)
@@ -225,13 +233,13 @@ function Kartta() {
         />
 
         {sijainti && (
-          <Marker position={sijainti} icon={defaultIcon}>
+          <Marker position={sijainti}>
             <Popup>📍 Olet tässä: <br/> {vesisto || "Haetaan sijaintia..."}</Popup>
           </Marker>
         )}
 
         {paikat.map((paikka) => (
-          <Marker key={paikka.id} position={[paikka.lat, paikka.lon]} icon={defaultIcon}>
+          <Marker key={paikka.id} position={[paikka.lat, paikka.lon]}>
             <Popup minWidth={250}>
               {muokattavaId === paikka.id ? (
                 // MUOKKAUSLOMAKE
