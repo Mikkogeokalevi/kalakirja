@@ -2,35 +2,28 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// --- KUVAKORJAUS ---
+// --- YKSINKERTAISTETTU KUVAKORJAUS ---
 import L from 'leaflet'
-import icon from 'leaflet/dist/images/marker-icon.png'
+// Määritellään ikonit suoraan ilman monimutkaista prototype-säätöä
+import iconMarker from 'leaflet/dist/images/marker-icon.png'
+import iconRetina from 'leaflet/dist/images/marker-icon-2x.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
 
-let DefaultIcon = L.icon({
-    iconUrl: icon,
+const defaultIcon = L.icon({
+    iconRetinaUrl: iconRetina,
+    iconUrl: iconMarker,
     shadowUrl: iconShadow,
     iconSize: [25, 41],
     iconAnchor: [12, 41],
-    popupAnchor: [1, -34]
+    popupAnchor: [1, -34],
+    shadowSize: [41, 41]
 });
-
-L.Marker.prototype.options.icon = DefaultIcon;
-// -------------------
+// -------------------------------------
 
 import { db } from './firebase'
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore' 
 
-// Apukomponentti kartan keskittämiseen
-function SiirraKartta({ koordinaatit }) {
-  const map = useMap()
-  useEffect(() => {
-    if (koordinaatit) {
-      map.flyTo(koordinaatit, 14, { duration: 2 })
-    }
-  }, [koordinaatit, map])
-  return null
-}
+// (Poistettu SiirraKartta-komponentti väliaikaisesti vianetsinnän ajaksi)
 
 function Kartta() {
   const [sijainti, setSijainti] = useState(null)
@@ -48,19 +41,15 @@ function Kartta() {
   const [muokattavaId, setMuokattavaId] = useState(null) 
   const [muokkausData, setMuokkausData] = useState({})   
 
-  // 1. Osoitteenhaku (Vieläkin paranneltu versio)
+  // 1. Osoitteenhaku
   const haeOsoite = async (lat, lon) => {
     setLadataanOsoitetta(true)
-    // Tyhjennetään vanha, jotta käyttäjä huomaa haun olevan käynnissä
     setVesisto("") 
 
     try {
       const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
       const data = await response.json()
       
-      console.log("Osoitehaku palautti:", data)
-
-      // Yritetään löytää paras mahdollinen nimi
       let paikanNimi = data.address.water || 
                        data.address.natural || 
                        data.address.island || 
@@ -72,17 +61,12 @@ function Kartta() {
                        data.address.neighbourhood || 
                        data.address.road;
 
-      // HÄTÄVARA: Jos mikään yllä olevista ei tärppää, otetaan "display_name":n ensimmäinen osa
-      // Esim. jos data on "Prisma, Aleksanterinkatu...", otetaan "Prisma"
       if (!paikanNimi && data.display_name) {
         paikanNimi = data.display_name.split(",")[0];
       }
-
-      // Jos vieläkään ei löydy, laitetaan koordinaatit
       if (!paikanNimi) {
         paikanNimi = "Tuntematon sijainti"
       }
-      
       setVesisto(paikanNimi)
 
     } catch (err) {
@@ -143,7 +127,7 @@ function Kartta() {
     haeTiedot()
   }, []) 
 
-  // --- LOGIIKKA: Uusi paikka ---
+  // --- LOGIIKKA ---
   const hallitseKalavalintaa = (kala) => {
     if (valitutKalat.includes(kala)) {
       setValitutKalat(valitutKalat.filter(k => k !== kala))
@@ -155,7 +139,6 @@ function Kartta() {
   const tallennaPaikka = async () => {
     if (!sijainti) return
     const tallennettavaNimi = nimi.trim() !== "" ? nimi : "Nimetön paikka"
-    // Jos vesistö on vielä "latautuu", käytetään tyhjää tai tekstiä "Haku kesken"
     const tallennettavaVesisto = ladataanOsoitetta ? "Sijaintia haetaan..." : vesisto
 
     const uusiPaikka = {
@@ -174,7 +157,6 @@ function Kartta() {
       setNimi("") 
       setKommentti("")
       setValitutKalat([])
-      // Emme tyhjennä vesistöä kokonaan, jotta se pysyy näkyvissä seuraavaa varten
       alert("Havainto tallennettu! 🐟")
     } catch (virhe) {
       console.error("Tallennus epäonnistui:", virhe)
@@ -182,7 +164,6 @@ function Kartta() {
     }
   }
 
-  // --- LOGIIKKA: Muokkaus ---
   const aloitaMuokkaus = (paikka) => {
     setMuokattavaId(paikka.id)
     setMuokkausData({ ...paikka }) 
@@ -244,16 +225,13 @@ function Kartta() {
         />
 
         {sijainti && (
-          <>
-            <Marker position={sijainti}>
-              <Popup>📍 Olet tässä: <br/> {vesisto || "Haetaan sijaintia..."}</Popup>
-            </Marker>
-            <SiirraKartta koordinaatit={sijainti} />
-          </>
+          <Marker position={sijainti} icon={defaultIcon}>
+            <Popup>📍 Olet tässä: <br/> {vesisto || "Haetaan sijaintia..."}</Popup>
+          </Marker>
         )}
 
         {paikat.map((paikka) => (
-          <Marker key={paikka.id} position={[paikka.lat, paikka.lon]}>
+          <Marker key={paikka.id} position={[paikka.lat, paikka.lon]} icon={defaultIcon}>
             <Popup minWidth={250}>
               {muokattavaId === paikka.id ? (
                 // MUOKKAUSLOMAKE
