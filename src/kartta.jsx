@@ -4,7 +4,8 @@ import 'leaflet/dist/leaflet.css'
 
 // Tuodaan tietokantayhteys ja tarvittavat toiminnot
 import { db } from './firebase'
-import { collection, addDoc } from 'firebase/firestore' 
+// UUSI: Lisätty 'getDocs' listan hakemista varten
+import { collection, addDoc, getDocs } from 'firebase/firestore' 
 
 // Apukomponentti kartan liikutteluun
 function SiirraKartta({ koordinaatit }) {
@@ -19,8 +20,11 @@ function SiirraKartta({ koordinaatit }) {
 
 function Kartta() {
   const [sijainti, setSijainti] = useState(null)
+  
+  // Tähän tallennetaan kaikki tietokannasta haetut kalapaikat
+  const [paikat, setPaikat] = useState([])
 
-  // Haetaan sijainti kun sivu latautuu
+  // 1. Haetaan käyttäjän oma sijainti
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -37,38 +41,53 @@ function Kartta() {
     }
   }, [])
 
-  // --- TÄMÄ FUNKTIO HOITAA TALLENNUKSEN ---
-  const tallennaPaikka = async () => {
-    if (!sijainti) {
-      alert("Odota, sijaintia haetaan vielä...")
-      return
+  // 2. Haetaan vanhat kalapaikat heti kun sivu aukeaa
+  useEffect(() => {
+    const haePaikat = async () => {
+      const querySnapshot = await getDocs(collection(db, "kalapaikat"))
+      const haetutPaikat = []
+      
+      querySnapshot.forEach((doc) => {
+        // Lisätään jokainen löytynyt paikka listaan
+        haetutPaikat.push({
+          id: doc.id,
+          ...doc.data()
+        })
+      })
+      
+      setPaikat(haetutPaikat)
     }
 
+    haePaikat()
+  }, []) 
+
+  const tallennaPaikka = async () => {
+    if (!sijainti) return
+
     try {
-      // Lähetetään tiedot Firebaseen "kalapaikat"-kokoelmaan
       await addDoc(collection(db, "kalapaikat"), {
         lat: sijainti[0],
         lon: sijainti[1],
-        nimi: "Uusi kalapaikka", // Tähän voisi myöhemmin kysyä nimeä
-        pvm: new Date().toISOString() // Tallennetaan myös aika
+        nimi: "Uusi kalapaikka", 
+        pvm: new Date().toISOString() 
       });
       
-      alert("Paikka tallennettu pilveen! 🐟")
+      alert("Paikka tallennettu! Päivitä sivu nähdäksesi sen.")
     } catch (virhe) {
       console.error("Virhe tallennuksessa:", virhe)
-      alert("Tallennus epäonnistui. Katso konsolista lisätietoja.")
+      alert("Tallennus epäonnistui.")
     }
   }
 
   return (
     <div>
-      {/* Kartta-elementti */}
       <MapContainer center={[64.0, 26.0]} zoom={5} style={{ height: "400px", width: "100%" }}>
         <TileLayer
           attribution='&copy; OpenStreetMap contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
+        {/* Näytetään käyttäjän nykyinen sijainti */}
         {sijainti && (
           <>
             <Marker position={sijainti}>
@@ -77,9 +96,19 @@ function Kartta() {
             <SiirraKartta koordinaatit={sijainti} />
           </>
         )}
+
+        {/* Piirretään kaikki tietokannasta löytyneet paikat kartalle */}
+        {paikat.map((paikka) => (
+          <Marker key={paikka.id} position={[paikka.lat, paikka.lon]}>
+            <Popup>
+              <b>{paikka.nimi}</b><br />
+              Tallennettu: {new Date(paikka.pvm).toLocaleDateString()}
+            </Popup>
+          </Marker>
+        ))}
+
       </MapContainer>
 
-      {/* Tallenna-nappi kartan alle */}
       <div style={{ marginTop: "10px", textAlign: "center" }}>
         <button 
           onClick={tallennaPaikka}
