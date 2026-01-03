@@ -1,11 +1,11 @@
 import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
-
-// --- KUVAKORJAUS ---
 import L from 'leaflet'
 import icon from 'leaflet/dist/images/marker-icon.png'
 import iconShadow from 'leaflet/dist/images/marker-shadow.png'
+import { db } from './firebase'
+import { collection, addDoc, getDocs, doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore' 
 
 let DefaultIcon = L.icon({
     iconUrl: icon,
@@ -14,13 +14,7 @@ let DefaultIcon = L.icon({
     iconAnchor: [12, 41],
     popupAnchor: [1, -34]
 });
-
 L.Marker.prototype.options.icon = DefaultIcon;
-// -------------------
-
-import { db } from './firebase'
-// LISÄTTY: doc ja getDoc asetusten hakua varten
-import { collection, addDoc, getDocs, doc, getDoc } from 'firebase/firestore' 
 
 function SiirraKartta({ koordinaatit }) {
   const map = useMap()
@@ -35,22 +29,50 @@ function SiirraKartta({ koordinaatit }) {
 function Kartta() {
   const [sijainti, setSijainti] = useState(null)
   const [paikat, setPaikat] = useState([])
-
-  // LISÄTTY: Kalalajit haetaan nyt muuttujaan
-  const [kalalajit, setKalalajit] = useState(["Ahven", "Hauki"]) // Oletus ennen latausta
+  const [kalalajit, setKalalajit] = useState(["Ahven", "Hauki"]) 
 
   // --- LOMAKKEEN TIEDOT ---
   const [nimi, setNimi] = useState("")
-  const [vesisto, setVesisto] = useState("")
+  const [vesisto, setVesisto] = useState("") // Tähän tulee automaattinen nimi
   const [kommentti, setKommentti] = useState("")
   const [valitutKalat, setValitutKalat] = useState([]) 
+  const [ladataanOsoitetta, setLadataanOsoitetta] = useState(false)
 
-  // 1. Haetaan sijainti
+  // 1. UUSI: Funktio joka hakee vesistön nimen
+  const haeOsoite = async (lat, lon) => {
+    setLadataanOsoitetta(true)
+    try {
+      // Kysytään OpenStreetMapin "Nominatim"-palvelusta
+      const response = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lon}`)
+      const data = await response.json()
+      
+      // Yritetään löytää järkevä nimi (vesistö, kylä, kunta...)
+      const paikanNimi = data.address.water || 
+                         data.address.village || 
+                         data.address.city || 
+                         data.address.town || 
+                         data.address.municipality || 
+                         ""
+      
+      if (paikanNimi) {
+        setVesisto(paikanNimi)
+      }
+    } catch (err) {
+      console.error("Osoitteen haku ei onnistunut", err)
+    }
+    setLadataanOsoitetta(false)
+  }
+
+  // 2. Haetaan sijainti ja heti perään osoite
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (position) => {
-          setSijainti([position.coords.latitude, position.coords.longitude])
+          const lat = position.coords.latitude
+          const lon = position.coords.longitude
+          setSijainti([lat, lon])
+          // Kutsutaan automaattihakua
+          haeOsoite(lat, lon)
         },
         (error) => {
           console.log("Ei sijaintia, käytetään Lahtea.")
@@ -62,10 +84,8 @@ function Kartta() {
     }
   }, [])
 
-  // 2. Haetaan vanhat paikat JA kalalajit tietokannasta
   useEffect(() => {
     const haeTiedot = async () => {
-      // a) Haetaan paikat
       const querySnapshot = await getDocs(collection(db, "kalapaikat"))
       const haetutPaikat = []
       querySnapshot.forEach((doc) => {
@@ -73,21 +93,18 @@ function Kartta() {
       })
       setPaikat(haetutPaikat)
 
-      // b) Haetaan kalalajit asetuksista
       try {
         const docRef = doc(db, "asetukset", "kalalajit")
         const docSnap = await getDoc(docRef)
         if (docSnap.exists()) {
           setKalalajit(docSnap.data().lista)
         } else {
-          // Jos asetuksia ei ole, käytetään peruslistaa
           setKalalajit(["Ahven", "Hauki", "Kuha", "Siika", "Lohi"])
         }
       } catch (virhe) {
         console.error("Virhe lajien haussa:", virhe)
       }
     }
-
     haeTiedot()
   }, []) 
 
@@ -119,7 +136,7 @@ function Kartta() {
       setPaikat([...paikat, { id: docRef.id, ...uusiPaikka }])
 
       setNimi("") 
-      setVesisto("")
+      setVesisto("") // Tyhjennetään, mutta GPS voi hakea sen uudestaan jos ladataan sivu
       setKommentti("")
       setValitutKalat([])
 
@@ -133,8 +150,6 @@ function Kartta() {
 
   return (
     <div style={{ paddingBottom: "50px" }}> 
-      
-      {/* Kartta */}
       <MapContainer center={[64.0, 26.0]} zoom={5} style={{ height: "400px", width: "100%" }}>
         <TileLayer
           attribution='&copy; OpenStreetMap contributors'
@@ -183,17 +198,18 @@ function Kartta() {
         </div>
 
         <div style={{ marginBottom: "10px" }}>
-          <label style={{ display: "block", fontWeight: "bold", color: "#333" }}>Vesistö:</label>
+          <label style={{ display: "block", fontWeight: "bold", color: "#333" }}>
+            Vesistö {ladataanOsoitetta && <span style={{fontWeight:"normal", fontSize:"0.8em"}}>(Haetaan...)</span>}:
+          </label>
           <input 
             type="text" 
             value={vesisto}
             onChange={(e) => setVesisto(e.target.value)}
-            placeholder="esim. Päijänne"
-            style={{ width: "100%", padding: "8px", boxSizing: "border-box" }}
+            placeholder="Haetaan automaattisesti..."
+            style={{ width: "100%", padding: "8px", boxSizing: "border-box", backgroundColor: ladataanOsoitetta ? "#eee" : "white" }}
           />
         </div>
 
-        {/* Kalalajit (Dynaaminen lista) */}
         <div style={{ marginBottom: "10px" }}>
           <label style={{ display: "block", fontWeight: "bold", marginBottom: "5px", color: "#333" }}>Saadut kalat:</label>
           <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
