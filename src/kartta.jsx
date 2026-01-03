@@ -2,12 +2,26 @@ import { useState, useEffect } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import 'leaflet/dist/leaflet.css'
 
-// Tuodaan tietokantayhteys ja tarvittavat toiminnot
+// --- KORJAUS ALKAA: Tuodaan kuvat ja Leaflet erikseen ---
+import L from 'leaflet'
+import icon from 'leaflet/dist/images/marker-icon.png'
+import iconShadow from 'leaflet/dist/images/marker-shadow.png'
+
+// Asetetaan ikonit manuaalisesti, jotta ne eivät hajoa netissä
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41],
+    popupAnchor: [1, -34]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
+// --- KORJAUS PÄÄTTYY ---
+
 import { db } from './firebase'
-// UUSI: Lisätty 'getDocs' listan hakemista varten
 import { collection, addDoc, getDocs } from 'firebase/firestore' 
 
-// Apukomponentti kartan liikutteluun
 function SiirraKartta({ koordinaatit }) {
   const map = useMap()
   useEffect(() => {
@@ -20,11 +34,8 @@ function SiirraKartta({ koordinaatit }) {
 
 function Kartta() {
   const [sijainti, setSijainti] = useState(null)
-  
-  // Tähän tallennetaan kaikki tietokannasta haetut kalapaikat
   const [paikat, setPaikat] = useState([])
 
-  // 1. Haetaan käyttäjän oma sijainti
   useEffect(() => {
     if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
@@ -41,14 +52,12 @@ function Kartta() {
     }
   }, [])
 
-  // 2. Haetaan vanhat kalapaikat heti kun sivu aukeaa
   useEffect(() => {
     const haePaikat = async () => {
       const querySnapshot = await getDocs(collection(db, "kalapaikat"))
       const haetutPaikat = []
       
       querySnapshot.forEach((doc) => {
-        // Lisätään jokainen löytynyt paikka listaan
         haetutPaikat.push({
           id: doc.id,
           ...doc.data()
@@ -87,7 +96,6 @@ function Kartta() {
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
 
-        {/* Näytetään käyttäjän nykyinen sijainti */}
         {sijainti && (
           <>
             <Marker position={sijainti}>
@@ -97,7 +105,6 @@ function Kartta() {
           </>
         )}
 
-        {/* Piirretään kaikki tietokannasta löytyneet paikat kartalle */}
         {paikat.map((paikka) => (
           <Marker key={paikka.id} position={[paikka.lat, paikka.lon]}>
             <Popup>
